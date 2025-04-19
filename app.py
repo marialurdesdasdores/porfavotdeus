@@ -15,9 +15,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # URL da API Umbler para enviar mensagens
-UMBLER_API_URL = "https://app-utalk.umbler.com/api/message/send"
-UMBLER_TALK_WEBHOOK_URL = "https://porfavotdeus.onrender.com/webhook"
-
+UMBLER_API_URL = "https://app-utalk.umbler.com/api/message/send"  # Verifique se está correta
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -78,11 +76,6 @@ def enviar_para_umbler(resposta, chat_id):
         else:
             print(f"Erro ao enviar resposta ao Umbler. Status: {r.status_code} | Resposta: {r.text}")
 
-        response = requests.post(UMBLER_TALK_WEBHOOK_URL, json=payload, headers=headers)
-        if response.status_code == 200:
-            print("Mensagem enviada com sucesso para o Umbler Talk.")
-        else:
-            print(f"Falha ao enviar mensagem para o Umbler Talk. Status: {response.status_code} | Resposta: {response.text}")
     except Exception as e:
         print(f"Erro ao enviar para Umbler: {e}")
 
