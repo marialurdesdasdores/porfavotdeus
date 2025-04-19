@@ -14,8 +14,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Definindo chave da API OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# URL da API Umbler para enviar mensagens
-UMBLER_API_URL = "https://app-utalk.umbler.com/api/message/send"  # Verifique se está correta
+# URL do Webhook da Umbler
+UMBLER_WEBHOOK_URL = "https://porfavotdeus.onrender.com/webhook"  # URL do webhook configurado na Umbler
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -46,7 +46,7 @@ def enviar_para_chatgpt(mensagem):
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",  # ou o modelo que você está utilizando
-            messages=[
+            messages=[ 
                 {"role": "system", "content": "Você é um assistente."},
                 {"role": "user", "content": mensagem}
             ]
@@ -70,7 +70,8 @@ def enviar_para_umbler(resposta, chat_id):
             "content": resposta
         }
 
-        r = requests.post(UMBLER_API_URL, headers=headers, json=payload)
+        # Enviar a resposta para o webhook da Umbler
+        r = requests.post(UMBLER_WEBHOOK_URL, headers=headers, json=payload)
         if r.status_code == 200:
             print("Resposta enviada ao Umbler com sucesso.")
         else:
