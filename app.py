@@ -40,14 +40,16 @@ def receber_mensagem():
 import openai
 
 def enviar_para_chatgpt(mensagem):
-    response = openai.chat_completions.create(
-        model="gpt-4",  # ou outro modelo
-        messages=[
-            {"role": "system", "content": "Você é um assistente útil."},
-            {"role": "user", "content": mensagem},
-        ]
-    )
+    response = openai.ChatCompletion.create(
+    model="gpt-4",  # ou o modelo que você está utilizando
+    messages=[
+        {"role": "system", "content": "Você é um assistente."},
+        {"role": "user", "content": mensagem}
+    ]
+)
+
     return response['choices'][0]['message']['content']
+
 
 
 def enviar_para_umbler(resposta, chat_id):
