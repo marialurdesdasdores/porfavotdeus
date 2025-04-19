@@ -5,11 +5,8 @@ import requests
 # Configurações
 UMBLER_API_KEY = "Token-API-integracaoChatGPT-2025-04-18-2093-05-07--E0B11895AC80831A100AC42DD919006BE896DA5CE0207D6A05CEEF21675F4B14"
 OPENAI_API_KEY = "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"
+openai.api_key = OPENAI_API_KEY
 
-# Nova forma de autenticar
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
-# URL do webhook (apenas se precisar reencaminhar algo depois)
 UMBLER_TALK_WEBHOOK_URL = "https://porfavotdeus.onrender.com/webhook"
 
 app = Flask(__name__)
@@ -26,10 +23,9 @@ def webhook():
             last_message = data.get('Payload', {}).get('LastMessage', {}).get('Content', 'Sem mensagem')
 
             if last_message:
-                response = client.chat.completions.create(
-                    model="gpt-3.5-turbo",  # ou "gpt-4"
+                response = openai.chat.completions.create(
+                    model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": "Você é um assistente útil."},
                         {"role": "user", "content": last_message}
                     ],
                     max_tokens=150
