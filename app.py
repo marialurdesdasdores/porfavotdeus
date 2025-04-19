@@ -25,11 +25,16 @@ def home():
 @app.route("/webhook", methods=["POST"])
 def receber_mensagem():
     data = request.json
-    print("Mensagem recebida:", data)
+    print("Mensagem recebida:", data)  # Imprime toda a estrutura de dados para análise
 
     try:
-        mensagem = data['Payload']['Content']['LastMessage']['Content']
-        chat_id = data['Payload']['Content']['LastMessage']['Chat']['Id']
+        # Ajuste no acesso ao conteúdo de acordo com a estrutura real
+        mensagem = data.get('Payload', {}).get('Content', {}).get('LastMessage', {}).get('Content', '')
+        chat_id = data.get('Payload', {}).get('Content', {}).get('LastMessage', {}).get('Chat', {}).get('Id', '')
+        
+        if not mensagem or not chat_id:
+            print("Mensagem ou chat_id ausentes.")
+            return jsonify({"error": "mensagem ou chat_id não encontrado"}), 400
     except (KeyError, TypeError) as e:
         print("Erro ao acessar mensagem ou chat_id:", e)
         return jsonify({"error": "mensagem ou chat_id não encontrado"}), 400
