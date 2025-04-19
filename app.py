@@ -37,14 +37,18 @@ def receber_mensagem():
 
     return jsonify({"status": "mensagem enviada"}), 200
 
+import openai
+
 def enviar_para_chatgpt(mensagem):
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",  # ou "gpt-4"
-        messages=[{"role": "system", "content": "Você é um assistente útil."},
-                  {"role": "user", "content": mensagem}],
-        max_tokens=150
+    response = openai.chat_completions.create(
+        model="gpt-4",  # ou outro modelo
+        messages=[
+            {"role": "system", "content": "Você é um assistente útil."},
+            {"role": "user", "content": mensagem},
+        ]
     )
-    return response.choices[0].message['content'].strip()
+    return response['choices'][0]['message']['content']
+
 
 def enviar_para_umbler(resposta, chat_id):
     headers = {
