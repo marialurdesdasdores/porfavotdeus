@@ -18,8 +18,8 @@ def receber_mensagem():
     data = request.json
     print("Mensagem recebida:", data)
 
-    mensagem = data.get("content")
-    chat_id = data.get("chatId")
+  mensagem = data.get("Payload", {}).get("Content", {}).get("LastMessage", {}).get("Content")
+chat_id = data.get("Payload", {}).get("Content", {}).get("Id")
 
     if not mensagem or not chat_id:
         return jsonify({"error": "Mensagem ou chatId ausente"}), 400
