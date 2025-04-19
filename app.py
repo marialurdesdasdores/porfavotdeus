@@ -20,19 +20,18 @@ def receber_mensagem():
     data = request.json
     print("Mensagem recebida:", data)
 
-    mensagem = data.get("Payload", {}).get("Content", {}).get("LastMessage", {}).get("Content")
-    chat_id = data.get("Payload", {}).get("Chat", {}).get("Id")
+    try:
+        mensagem = data['Payload']['Content']['LastMessage']['Content']
+        chat_id = data['Payload']['Content']['LastMessage']['Chat']['Id']
+    except (KeyError, TypeError) as e:
+        print("Erro ao acessar mensagem ou chat_id:", e)
+        return jsonify({"error": "mensagem ou chat_id não encontrado"}), 400
 
-    if not mensagem or not chat_id:
-        return jsonify({"error": "Mensagem ou chatId ausente"}), 400
-
-    # Enviando para o ChatGPT
     resposta = enviar_para_chatgpt(mensagem)
-
-    # Enviando de volta para o Umbler Talk
     enviar_para_umbler(resposta, chat_id)
 
     return jsonify({"status": "mensagem enviada"}), 200
+
 
 
 def enviar_para_chatgpt(mensagem):
