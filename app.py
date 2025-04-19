@@ -18,8 +18,8 @@ def receber_mensagem():
     data = request.json
     print("Mensagem recebida:", data)
 
-  mensagem = data.get("Payload", {}).get("Content", {}).get("LastMessage", {}).get("Content")
-chat_id = data.get("Payload", {}).get("Content", {}).get("Id")
+    mensagem = data.get("Payload", {}).get("Content", {}).get("LastMessage", {}).get("Content")
+    chat_id = data.get("Payload", {}).get("Chat", {}).get("Id")
 
     if not mensagem or not chat_id:
         return jsonify({"error": "Mensagem ou chatId ausente"}), 400
@@ -31,6 +31,7 @@ chat_id = data.get("Payload", {}).get("Content", {}).get("Id")
     enviar_para_umbler(resposta, chat_id)
 
     return jsonify({"status": "mensagem enviada"}), 200
+
 
 
 def enviar_para_chatgpt(mensagem):
