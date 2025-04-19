@@ -1,58 +1,73 @@
-from flask import Flask, request, jsonify
 import openai
+from flask import Flask, request, jsonify
 import requests
-import os
+
+# Configurações
+UMBLER_API_KEY = "Token-API-integracaoChatGPT-2025-04-18-2093-05-07--E0B11895AC80831A100AC42DD919006BE896DA5CE0207D6A05CEEF21675F4B14"
+OPENAI_API_KEY = "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"
+
+# Nova forma de autenticar
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+# URL do webhook (apenas se precisar reencaminhar algo depois)
+UMBLER_TALK_WEBHOOK_URL = "https://porfavotdeus.onrender.com/webhook"
 
 app = Flask(__name__)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-UMBLER_TOKEN = os.getenv("UMBLER_TOKEN")
-
-# URL da API Umbler para enviar mensagens
-UMBLER_API_URL = "https://app-utalk.umbler.com/api/message/send"
-
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"status": "Aplicação rodando"}), 200
-
 @app.route("/webhook", methods=["POST"])
-def receber_mensagem():
-    data = request.json
-    print("Mensagem recebida:", data)
-
+def webhook():
     try:
-        mensagem = data['Payload']['Content']['LastMessage']['Content']
-        chat_id = data['Payload']['Content']['LastMessage']['Chat']['Id']
-    except (KeyError, TypeError) as e:
-        print("Erro ao acessar mensagem ou chat_id:", e)
-        return jsonify({"error": "mensagem ou chat_id não encontrado"}), 400
+        data = request.get_json()
 
-    resposta = enviar_para_chatgpt(mensagem)
-    enviar_para_umbler(resposta, chat_id)
+        if data:
+            print("Mensagem recebida:", data)
 
-    return jsonify({"status": "mensagem enviada"}), 200
+            contact_name = data.get('Payload', {}).get('Contact', {}).get('Name', 'Desconhecido')
+            last_message = data.get('Payload', {}).get('LastMessage', {}).get('Content', 'Sem mensagem')
 
+            if last_message:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",  # ou "gpt-4"
+                    messages=[
+                        {"role": "system", "content": "Você é um assistente útil."},
+                        {"role": "user", "content": last_message}
+                    ],
+                    max_tokens=150
+                )
 
+                chatgpt_reply = response.choices[0].message.content.strip()
+                print(f"Resposta do ChatGPT: {chatgpt_reply}")
 
-def enviar_para_chatgpt(mensagem):
-    resposta = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": mensagem}]
-    )
-    return resposta.choices[0].message.content.strip()
+                send_message_to_umbler(contact_name, chatgpt_reply)
 
+            return jsonify({"status": "success", "message": "Mensagem recebida com sucesso!"}), 200
 
-def enviar_para_umbler(resposta, chat_id):
+        else:
+            return jsonify({"status": "error", "message": "Erro ao processar dados."}), 400
+
+    except Exception as e:
+        print(f"Erro: {e}")
+        return jsonify({"status": "error", "message": "Erro no servidor."}), 500
+
+def send_message_to_umbler(contact_name, message):
+    payload = {
+        "Message": {
+            "Content": message,
+            "Contact": contact_name
+        }
+    }
+
     headers = {
-        "Authorization": f"Bearer {UMBLER_TOKEN}",
+        "Authorization": f"Bearer {UMBLER_API_KEY}",
         "Content-Type": "application/json"
     }
-    payload = {
-        "chatId": chat_id,
-        "content": resposta
-    }
-    r = requests.post(UMBLER_API_URL, headers=headers, json=payload)
-    print("Resposta enviada ao Umbler:", r.status_code, r.text)
+
+    response = requests.post(UMBLER_TALK_WEBHOOK_URL, json=payload, headers=headers)
+
+    if response.status_code == 200:
+        print("Mensagem enviada com sucesso para o Umbler Talk.")
+    else:
+        print(f"Falha ao enviar mensagem. Status: {response.status_code} | Resposta: {response.text}")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)
