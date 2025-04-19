@@ -7,15 +7,15 @@ import openai
 # Carregar variáveis de ambiente
 load_dotenv()
 
-# Configurações
 UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Definindo chave da API OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# URL do Webhook da Umbler
-UMBLER_WEBHOOK_URL = "https://porfavotdeus.onrender.com/webhook"  # URL do webhook configurado na Umbler
+# Endpoint correto da Umbler para enviar mensagens (não o webhook!)
+UMBLER_SEND_MESSAGE_URL = "https://chat.umbler.com/api/v1/messages"
+
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -25,16 +25,11 @@ def home():
 @app.route("/webhook", methods=["POST"])
 def receber_mensagem():
     data = request.json
-    print("Mensagem recebida:", data)  # Imprime toda a estrutura de dados para análise
+    print("Mensagem recebida:", data)
 
     try:
-        # Ajuste no acesso ao conteúdo de acordo com a estrutura real
-        mensagem = data.get('Payload', {}).get('Content', {}).get('LastMessage', {}).get('Content', '')
-        chat_id = data.get('Payload', {}).get('Content', {}).get('LastMessage', {}).get('Chat', {}).get('Id', '')
-        
-        if not mensagem or not chat_id:
-            print("Mensagem ou chat_id ausentes.")
-            return jsonify({"error": "mensagem ou chat_id não encontrado"}), 400
+        mensagem = data['Payload']['Content']['LastMessage']['Content']
+        chat_id = data['Payload']['Content']['LastMessage']['Chat']['Id']
     except (KeyError, TypeError) as e:
         print("Erro ao acessar mensagem ou chat_id:", e)
         return jsonify({"error": "mensagem ou chat_id não encontrado"}), 400
@@ -45,13 +40,13 @@ def receber_mensagem():
     else:
         print("Erro ao obter resposta do ChatGPT. Mensagem não enviada.")
 
-    return jsonify({"status": "mensagem enviada"}), 200
+    return jsonify({"status": "mensagem processada"}), 200
 
 def enviar_para_chatgpt(mensagem):
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4",  # ou o modelo que você está utilizando
-            messages=[ 
+            model="gpt-4",
+            messages=[
                 {"role": "system", "content": "Você é um assistente."},
                 {"role": "user", "content": mensagem}
             ]
@@ -75,13 +70,11 @@ def enviar_para_umbler(resposta, chat_id):
             "content": resposta
         }
 
-        # Enviar a resposta para o webhook da Umbler
-        r = requests.post(UMBLER_WEBHOOK_URL, headers=headers, json=payload)
+        r = requests.post(UMBLER_SEND_MESSAGE_URL, headers=headers, json=payload)
         if r.status_code == 200:
             print("Resposta enviada ao Umbler com sucesso.")
         else:
             print(f"Erro ao enviar resposta ao Umbler. Status: {r.status_code} | Resposta: {r.text}")
-
     except Exception as e:
         print(f"Erro ao enviar para Umbler: {e}")
 
