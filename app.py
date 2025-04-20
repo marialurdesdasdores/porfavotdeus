@@ -14,7 +14,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Endpoint correto da Umbler para enviar mensagens (não o webhook!)
-UMBLER_SEND_MESSAGE_URL = "https://api.umbler.com/chat/v1/messages"
+UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
 app = Flask(__name__)
 
