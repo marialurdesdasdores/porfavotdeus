@@ -1,19 +1,15 @@
 from flask import Flask, request, jsonify
 import requests
-import os
-from dotenv import load_dotenv
 import openai
 
-# Carregar variáveis de ambiente
-load_dotenv()
-
-UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# Chaves diretamente no código (apenas para testes!)
+UMBLER_API_KEY = "unclego-2025-04-20-2093-05-08--AC38E58C3CB6B9960A42752253B90D1A26164A345886D83F0EF0210D62170290"
+OPENAI_API_KEY = "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"
 
 # Definindo chave da API OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# Endpoint correto da Umbler para enviar mensagens (não o webhook!)
+# Endpoint da Umbler para envio de mensagens
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
 app = Flask(__name__)
