@@ -8,24 +8,24 @@ import logging
 # Configuração de logs
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
 
-# Carrega variáveis do .env
+# Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
-# Recupera as chaves de API
+# Recupera as chaves da OpenAI e Umbler
 UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Verificação básica
+# Verifica se as chaves foram carregadas corretamente
 if not UMBLER_API_KEY or not OPENAI_API_KEY:
-    raise ValueError("Erro: UMBLER_API_KEY ou OPENAI_API_KEY não foram carregadas. Verifique se o .env foi corretamente configurado no Render.")
+    raise ValueError("Erro: UMBLER_API_KEY ou OPENAI_API_KEY não foram carregadas. Verifique seu .env e as variáveis no Render.")
 
-# (Opcional) Define a chave globalmente, mas não depende disso
+# Configura a chave da OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# URL da Umbler
+# URL da Umbler para envio de mensagens
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Inicializa Flask
+# Inicializa a aplicação Flask
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -40,13 +40,15 @@ def receber_mensagem():
     try:
         mensagem = data['Payload']['Content']['LastMessage']['Content']
         chat_id = data['Payload']['Content']['LastMessage']['Chat']['Id']
+        from_phone = data['Payload']['Content']['Channel']['PhoneNumber']
+        to_phone = data['Payload']['Content']['Contact']['PhoneNumber']
     except (KeyError, TypeError) as e:
         logging.error("Erro ao acessar mensagem ou chat_id: %s", e)
         return jsonify({"error": "mensagem ou chat_id não encontrado"}), 400
 
     resposta = enviar_para_chatgpt(mensagem)
     if resposta:
-        enviar_para_umbler(resposta, chat_id)
+        enviar_para_umbler(resposta, chat_id, from_phone, to_phone)
     else:
         logging.error("Erro ao obter resposta do ChatGPT. Mensagem não enviada.")
 
@@ -55,7 +57,6 @@ def receber_mensagem():
 def enviar_para_chatgpt(mensagem):
     try:
         response = openai.ChatCompletion.create(
-            api_key=OPENAI_API_KEY,  # <-- Chave passada diretamente
             model="gpt-4",
             messages=[
                 {
@@ -66,9 +67,7 @@ def enviar_para_chatgpt(mensagem):
                     "role": "user",
                     "content": mensagem
                 }
-            ],
-            max_tokens=500,
-            timeout=15
+            ]
         )
         resposta_chatgpt = response['choices'][0]['message']['content']
         logging.info("Resposta do ChatGPT: %s", resposta_chatgpt)
@@ -77,7 +76,7 @@ def enviar_para_chatgpt(mensagem):
         logging.error("Erro ao comunicar com o ChatGPT: %s", e)
         return None
 
-def enviar_para_umbler(resposta, chat_id):
+def enviar_para_umbler(resposta, chat_id, from_phone, to_phone):
     try:
         headers = {
             "Authorization": f"Bearer {UMBLER_API_KEY}",
@@ -85,7 +84,10 @@ def enviar_para_umbler(resposta, chat_id):
         }
         payload = {
             "chatId": chat_id,
-            "content": resposta
+            "content": resposta,
+            "fromPhone": from_phone,
+            "toPhone": to_phone,
+            "model": "whatsapp"
         }
 
         r = requests.post(UMBLER_SEND_MESSAGE_URL, headers=headers, json=payload)
