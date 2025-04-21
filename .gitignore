@@ -1,0 +1,14 @@
+# Ignore arquivos de ambiente
+.env
+
+# Cache do Python
+__pycache__/
+*.pyc
+
+# Pastas e arquivos do virtualenv (se houver)
+venv/
+.env/
+*.env
+
+# Logs
+*.log

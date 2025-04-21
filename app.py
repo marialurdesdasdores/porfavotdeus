@@ -1,17 +1,31 @@
 from flask import Flask, request, jsonify
 import requests
+import os
 import openai
+from dotenv import load_dotenv
+import logging
 
-# Chaves diretamente no código (apenas para testes!)
-UMBLER_API_KEY = "unclego-2025-04-20-2093-05-08--AC38E58C3CB6B9960A42752253B90D1A26164A345886D83F0EF0210D62170290"
-OPENAI_API_KEY = "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"
+# Configuração de logs
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
 
-# Definindo chave da API OpenAI
+# Carrega as variáveis de ambiente do arquivo .env
+load_dotenv()
+
+# Recupera as chaves da OpenAI e Umbler
+UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Verifica se as chaves foram carregadas corretamente
+if not UMBLER_API_KEY or not OPENAI_API_KEY:
+    raise ValueError("Erro: UMBLER_API_KEY ou OPENAI_API_KEY não foram carregadas. Verifique seu .env e as variáveis no Render.")
+
+# Configura a chave da OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# Endpoint da Umbler para envio de mensagens
+# URL da Umbler para envio de mensagens
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
+# Inicializa a aplicação Flask
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -21,20 +35,20 @@ def home():
 @app.route("/webhook", methods=["POST"])
 def receber_mensagem():
     data = request.json
-    print("Mensagem recebida:", data)
+    logging.info("Mensagem recebida: %s", data)
 
     try:
         mensagem = data['Payload']['Content']['LastMessage']['Content']
         chat_id = data['Payload']['Content']['LastMessage']['Chat']['Id']
     except (KeyError, TypeError) as e:
-        print("Erro ao acessar mensagem ou chat_id:", e)
+        logging.error("Erro ao acessar mensagem ou chat_id: %s", e)
         return jsonify({"error": "mensagem ou chat_id não encontrado"}), 400
 
     resposta = enviar_para_chatgpt(mensagem)
     if resposta:
         enviar_para_umbler(resposta, chat_id)
     else:
-        print("Erro ao obter resposta do ChatGPT. Mensagem não enviada.")
+        logging.error("Erro ao obter resposta do ChatGPT. Mensagem não enviada.")
 
     return jsonify({"status": "mensagem processada"}), 200
 
@@ -43,15 +57,21 @@ def enviar_para_chatgpt(mensagem):
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "Você é um assistente."},
-                {"role": "user", "content": mensagem}
+                {
+                    "role": "system",
+                    "content": "Você é um assistente virtual simpático e prestativo de uma floricultura. Sempre tente entender o pedido do cliente e sugerir os melhores produtos disponíveis."
+                },
+                {
+                    "role": "user",
+                    "content": mensagem
+                }
             ]
         )
         resposta_chatgpt = response['choices'][0]['message']['content']
-        print("Resposta do ChatGPT:", resposta_chatgpt)
+        logging.info("Resposta do ChatGPT: %s", resposta_chatgpt)
         return resposta_chatgpt
     except Exception as e:
-        print(f"Erro ao comunicar com o ChatGPT: {e}")
+        logging.error("Erro ao comunicar com o ChatGPT: %s", e)
         return None
 
 def enviar_para_umbler(resposta, chat_id):
@@ -60,7 +80,6 @@ def enviar_para_umbler(resposta, chat_id):
             "Authorization": f"Bearer {UMBLER_API_KEY}",
             "Content-Type": "application/json"
         }
-
         payload = {
             "chatId": chat_id,
             "content": resposta
@@ -68,11 +87,11 @@ def enviar_para_umbler(resposta, chat_id):
 
         r = requests.post(UMBLER_SEND_MESSAGE_URL, headers=headers, json=payload)
         if r.status_code == 200:
-            print("Resposta enviada ao Umbler com sucesso.")
+            logging.info("Resposta enviada à Umbler com sucesso.")
         else:
-            print(f"Erro ao enviar resposta ao Umbler. Status: {r.status_code} | Resposta: {r.text}")
+            logging.error("Erro ao enviar resposta à Umbler. Status: %s | Resposta: %s", r.status_code, r.text)
     except Exception as e:
-        print(f"Erro ao enviar para Umbler: {e}")
+        logging.error("Erro ao enviar para Umbler: %s", e)
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
