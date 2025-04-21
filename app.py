@@ -23,7 +23,7 @@ if not UMBLER_API_KEY or not OPENAI_API_KEY:
 openai.api_key = OPENAI_API_KEY
 
 # URL da Umbler para envio de mensagens
-UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
+UMBLER_SEND_MESSAGE_URL = "https://api.utalk.com.br/v1/messages"
 
 # Inicializa a aplicação Flask
 app = Flask(__name__)
@@ -82,15 +82,23 @@ def enviar_para_umbler(resposta, chat_id, from_phone, to_phone):
             "Authorization": f"Bearer {UMBLER_API_KEY}",
             "Content-Type": "application/json"
         }
+
+        # ESTE É O FORMATO QUE A API DA UMBLER ESPERA:
         payload = {
-            "chatId": chat_id,
-            "content": resposta,
-            "fromPhone": from_phone,
-            "toPhone": to_phone,
-            "model": "whatsapp"
+            "model": {
+                "chatId": chat_id,
+                "fromPhone": from_phone,
+                "toPhone": to_phone,
+                "message": {
+                    "type": "Text",
+                    "content": resposta,
+                    "quotedMessageId": None
+                }
+            }
         }
 
         r = requests.post(UMBLER_SEND_MESSAGE_URL, headers=headers, json=payload)
+
         if r.status_code == 200:
             logging.info("Resposta enviada à Umbler com sucesso.")
         else:
