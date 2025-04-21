@@ -8,24 +8,24 @@ import logging
 # Configuração de logs
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
 
-# Carrega as variáveis de ambiente do arquivo .env
+# Carrega variáveis do .env
 load_dotenv()
 
-# Recupera as chaves da OpenAI e Umbler
+# Recupera as chaves de API
 UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Verifica se as chaves foram carregadas corretamente
+# Verificação básica
 if not UMBLER_API_KEY or not OPENAI_API_KEY:
-    raise ValueError("Erro: UMBLER_API_KEY ou OPENAI_API_KEY não foram carregadas. Verifique seu .env e as variáveis no Render.")
+    raise ValueError("Erro: UMBLER_API_KEY ou OPENAI_API_KEY não foram carregadas. Verifique se o .env foi corretamente configurado no Render.")
 
-# Configura a chave da OpenAI
+# (Opcional) Define a chave globalmente, mas não depende disso
 openai.api_key = OPENAI_API_KEY
 
-# URL da Umbler para envio de mensagens
+# URL da Umbler
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Inicializa a aplicação Flask
+# Inicializa Flask
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -55,6 +55,7 @@ def receber_mensagem():
 def enviar_para_chatgpt(mensagem):
     try:
         response = openai.ChatCompletion.create(
+            api_key=OPENAI_API_KEY,  # <-- Chave passada diretamente
             model="gpt-4",
             messages=[
                 {
@@ -65,7 +66,9 @@ def enviar_para_chatgpt(mensagem):
                     "role": "user",
                     "content": mensagem
                 }
-            ]
+            ],
+            max_tokens=500,
+            timeout=15
         )
         resposta_chatgpt = response['choices'][0]['message']['content']
         logging.info("Resposta do ChatGPT: %s", resposta_chatgpt)
