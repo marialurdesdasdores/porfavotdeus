@@ -74,6 +74,10 @@ def enviar_para_chatgpt(mensagem):
         return None
 
 def enviar_para_umbler(resposta, chat_id, from_phone, to_phone):
+    if not resposta:
+        logging.error("Erro: A resposta do ChatGPT está vazia.")
+        return
+
     try:
         headers = {
             "Authorization": f"Bearer {UMBLER_API_KEY}",
@@ -81,17 +85,12 @@ def enviar_para_umbler(resposta, chat_id, from_phone, to_phone):
         }
         payload = {
             "chatId": chat_id,
-            "content": resposta,  # Certifique-se de que 'resposta' não seja None ou vazio
+            "content": resposta,
             "fromPhone": from_phone,
             "toPhone": to_phone,
             "model": "whatsapp",
-            "organizationId": UMBLER_ORG_ID  # campo obrigatório
+            "organizationId": UMBLER_ORG_ID
         }
-
-        # Verifique se a resposta não está vazia
-        if not resposta.strip():
-            logging.error("Resposta do ChatGPT está vazia, não será enviada para a Umbler.")
-            return
 
         r = requests.post(UMBLER_SEND_MESSAGE_URL, headers=headers, json=payload)
         if r.status_code == 200:
