@@ -83,15 +83,18 @@ def enviar_para_umbler(resposta, chat_id, from_phone, to_phone):
             "Authorization": f"Bearer {UMBLER_API_KEY}",
             "Content-Type": "application/json"
         }
+
+        # Criação do payload, agora com o campo "content" corretamente preenchido
         payload = {
             "chatId": chat_id,
-            "content": resposta,
+            "content": resposta,  # Mensagem de texto
             "fromPhone": from_phone,
             "toPhone": to_phone,
             "model": "whatsapp",
             "organizationId": UMBLER_ORG_ID
         }
 
+        # Enviar para a Umbler
         r = requests.post(UMBLER_SEND_MESSAGE_URL, headers=headers, json=payload)
         if r.status_code == 200:
             logging.info("Resposta enviada à Umbler com sucesso.")
