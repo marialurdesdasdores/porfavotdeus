@@ -51,6 +51,7 @@ def receber_mensagem():
         enviar_para_umbler(resposta, chat_id, from_phone, to_phone)
     else:
         logging.error("Erro ao obter resposta do ChatGPT. Mensagem não enviada.")
+        return jsonify({"error": "Erro ao obter resposta do ChatGPT"}), 500
 
     return jsonify({"status": "mensagem processada"}), 200
 
@@ -74,6 +75,10 @@ def enviar_para_chatgpt(mensagem):
         return None
 
 def enviar_para_umbler(resposta, chat_id, from_phone, to_phone):
+    if not resposta:
+        logging.error("A resposta do ChatGPT está vazia, não há mensagem para enviar.")
+        return
+
     try:
         headers = {
             "Authorization": f"Bearer {UMBLER_API_KEY}",
