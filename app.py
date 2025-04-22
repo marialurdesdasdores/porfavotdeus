@@ -5,66 +5,62 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# Carrega variáveis de ambiente do arquivo .env
+# Carregar variáveis de ambiente
 load_dotenv()
 
-# Configurações principais
-openai.api_key = os.getenv("OPENAI_API_KEY")
-UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
+# Configurações da API
 UMBLER_ORG_ID = os.getenv("UMBLER_ORG_ID")
+UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
+UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Inicializa o app Flask
+# Configuração do OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+# Inicializar o Flask
 app = Flask(__name__)
 CORS(app)
 
-@app.route("/")
-def index():
-    return "API da Floricultura no ar!"
-
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
-    print("Mensagem recebida:", data)
-
     try:
-        # Extrair informações essenciais
-        chat_id = data["Payload"]["Content"]["Id"]
-        mensagem_usuario = data["Payload"]["Content"]["LastMessage"]["Content"]
+        # Obter a mensagem recebida
+        data = request.json
+        message_content = data.get("Payload", {}).get("Content", {}).get("LastMessage", {}).get("Content", "")
+        phone_number = data.get("Payload", {}).get("Contact", {}).get("PhoneNumber", "")
 
-        # Gera resposta com ChatGPT
-        resposta = openai.ChatCompletion.create(
+        if not message_content or not phone_number:
+            return jsonify({"error": "Mensagem ou número de telefone não encontrados!"}), 400
+
+        # Resposta do ChatGPT
+        response = openai.Completion.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Você é um atendente simpático de uma floricultura."},
-                {"role": "user", "content": mensagem_usuario}
-            ]
+            messages=[{"role": "user", "content": message_content}],
+            max_tokens=150
         )
-        resposta_texto = resposta.choices[0].message["content"]
-        print("Resposta do ChatGPT:", resposta_texto)
+        chat_gpt_reply = response.choices[0].message["content"]
 
-        # Envia a resposta para a Umbler
-        url = f"https://app-utalk.umbler.com/api/v1/organization/{UMBLER_ORG_ID}/chat/{chat_id}/reply"
+        # Preparar o corpo da requisição para a Umbler
+        payload = {
+            "ToPhone": phone_number,
+            "FromPhone": os.getenv("FROM_PHONE"),  # Certifique-se de ter essa variável no .env
+            "OrganizationId": UMBLER_ORG_ID,
+            "Message": chat_gpt_reply
+        }
+
         headers = {
-            "accept": "application/json",
             "Authorization": f"Bearer {UMBLER_API_KEY}",
             "Content-Type": "application/json"
         }
-        payload = {
-            "message": resposta_texto
-        }
 
-        response = requests.post(url, json=payload, headers=headers)
+        # Enviar a resposta para o Umbler
+        umbler_response = requests.post(UMBLER_SEND_MESSAGE_URL, json=payload, headers=headers)
 
-        if response.status_code == 200:
-            print("✅ Mensagem enviada com sucesso para a Umbler!")
-        else:
-            print(f"❌ Erro ao enviar resposta à Umbler. Status: {response.status_code} | Resposta: {response.text}")
+        if umbler_response.status_code != 200:
+            return jsonify({"error": f"Erro ao enviar mensagem para o Umbler. Status {umbler_response.status_code}."}), 500
 
+        return jsonify({"message": "Mensagem enviada com sucesso!"}), 200
     except Exception as e:
-        print(f"❌ Erro no processamento da mensagem: {e}")
-
-    return jsonify({"status": "ok"})
-
+        return jsonify({"error": f"Erro: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+    app.run(debug=True)
