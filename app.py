@@ -1,12 +1,12 @@
 import os
-import openai
 import requests
 import logging
 import json
+import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-import time
+from openai import OpenAI
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -17,10 +17,10 @@ UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Configuração do OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Inicializar OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Inicializar o Flask
+# Inicializar Flask
 app = Flask(__name__)
 CORS(app)
 
@@ -32,7 +32,7 @@ logging.basicConfig(
 )
 
 def send_message_with_retry(payload, headers, retries=3, delay=2):
-    """Tenta enviar mensagem até 3 vezes em caso de falha."""
+    """Envia mensagem com retry em caso de falha."""
     for attempt in range(retries):
         try:
             response = requests.post(
@@ -55,7 +55,7 @@ def webhook():
         data = request.json
         logging.info("Payload bruto recebido:\n" + json.dumps(data, indent=2, ensure_ascii=False))
 
-        # Extrai mensagem e número
+        # Extrair mensagem e telefone
         last_message = data.get("Payload", {}).get("Content", {}).get("LastMessage", {})
         contact_info = data.get("Payload", {}).get("Contact", {})
 
@@ -66,20 +66,20 @@ def webhook():
             logging.error("Mensagem ou número do cliente ausente no payload.")
             return jsonify({"error": "Dados incompletos no webhook."}), 400
 
-        # Cria conversa com GPT
+        # Criar conversa com o ChatGPT
         conversation = [
             {"role": "system", "content": "Você é um atendente virtual simpático, prestativo e responde em português."},
             {"role": "user", "content": message_content}
         ]
 
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=conversation,
             max_tokens=200
         )
-        chat_gpt_reply = response.choices[0].message["content"].strip()
+        chat_gpt_reply = response.choices[0].message.content.strip()
 
-        # Prepara envio para Umbler
+        # Enviar mensagem de volta para o cliente via Umbler
         payload = {
             "ToPhone": phone_number,
             "FromPhone": FROM_PHONE,
