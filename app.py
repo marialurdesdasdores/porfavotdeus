@@ -98,8 +98,9 @@ def webhook():
                 {"role": "user", "content": message_content}
             ]
 
+        # ✅ Atualizado: novo modelo vision da OpenAI
         response = client.chat.completions.create(
-            model="gpt-4-vision-preview",
+            model="gpt-4-1106-vision",
             messages=messages,
             max_tokens=400
         )
