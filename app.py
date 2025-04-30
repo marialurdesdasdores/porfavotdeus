@@ -63,9 +63,11 @@ def webhook():
         source = last_message.get("Source", "")
         message_type = last_message.get("MessageType", "")
         message_content = last_message.get("Content", "").strip()
-        file_info = last_message.get("File", {})
-        image_url = file_info.get("Url", "")
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
+
+        # ⚠️ CORREÇÃO: trata caso File seja None
+        file_info = last_message.get("File")
+        image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
 
         # Proteção contra loop
         if source != "Contact":
@@ -87,7 +89,7 @@ def webhook():
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Descreva a imagem enviada."},
+                        {"type": "text", "text": "Analise essa imagem."},
                         {"type": "image_url", "image_url": {"url": image_url}}
                     ]
                 }
