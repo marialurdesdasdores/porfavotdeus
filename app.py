@@ -24,7 +24,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = Flask(__name__)
 CORS(app)
 
-# Logging para Render (stdout)
+# Logging no console
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def carregar_prompt_personalizado():
@@ -65,11 +65,9 @@ def webhook():
         message_content = last_message.get("Content", "").strip()
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
-        # ⚠️ CORREÇÃO: trata caso File seja None
         file_info = last_message.get("File")
         image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
 
-        # Proteção contra loop
         if source != "Contact":
             logging.warning("Mensagem ignorada (não é de um cliente).")
             return jsonify({"status": "ignorada"}), 200
@@ -78,23 +76,23 @@ def webhook():
             logging.error("Conteúdo ou número ausente.")
             return jsonify({"error": "Dados incompletos"}), 400
 
-        # Carrega o prompt do arquivo
         system_prompt = carregar_prompt_personalizado()
 
-        # Criar mensagem para GPT-4 Vision
+        # 📸 Log diferenciado e input para imagens
         if message_type == "Image" and image_url:
-            logging.info(f"Imagem detectada: {image_url}")
+            logging.info(f"🖼️ Cliente enviou uma imagem: {image_url}")
             messages = [
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Analise essa imagem."},
+                        {"type": "text", "text": "Descreva a imagem enviada."},
                         {"type": "image_url", "image_url": {"url": image_url}}
                     ]
                 }
             ]
         else:
+            logging.info(f"💬 Cliente enviou texto: {message_content}")
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": message_content}
@@ -107,7 +105,6 @@ def webhook():
         )
         reply = response.choices[0].message.content.strip()
 
-        # Envia a resposta para o WhatsApp via Umbler
         payload = {
             "ToPhone": phone_number,
             "FromPhone": FROM_PHONE,
@@ -125,7 +122,7 @@ def webhook():
             logging.error(f"Erro ao enviar resposta. Status: {umbler_response.status_code if umbler_response else 'N/A'}")
             return jsonify({"error": "Falha ao enviar mensagem"}), 500
 
-        logging.info(f"Resposta enviada para {phone_number}: {reply[:60]}...")
+        logging.info(f"✅ Resposta enviada para {phone_number}: {reply[:60]}...")
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
