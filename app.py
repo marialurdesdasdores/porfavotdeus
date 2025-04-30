@@ -62,14 +62,17 @@ def webhook():
         last_message = content.get("LastMessage", {})
         source = last_message.get("Source", "")
         message_type = last_message.get("MessageType", "")
-        
-        # ✅ Correção segura para evitar erro em .strip()
+
+        # Protege contra erro de strip em None
         raw_content = last_message.get("Content")
         message_content = raw_content.strip() if isinstance(raw_content, str) else ""
 
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
+        # ✅ Correção: tenta pegar imagem de LastMessage ou Message
         file_info = last_message.get("File")
+        if not isinstance(file_info, dict):
+            file_info = content.get("Message", {}).get("File")
         image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
 
         if source != "Contact":
@@ -82,7 +85,7 @@ def webhook():
 
         system_prompt = carregar_prompt_personalizado()
 
-        # 📸 Log diferenciado e input para imagens
+        # Processamento da imagem
         if message_type == "Image" and image_url:
             logging.info(f"🖼️ Cliente enviou uma imagem: {image_url}")
             messages = [
