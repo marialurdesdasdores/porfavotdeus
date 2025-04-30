@@ -62,7 +62,11 @@ def webhook():
         last_message = content.get("LastMessage", {})
         source = last_message.get("Source", "")
         message_type = last_message.get("MessageType", "")
-        message_content = last_message.get("Content", "").strip()
+        
+        # ✅ Correção segura para evitar erro em .strip()
+        raw_content = last_message.get("Content")
+        message_content = raw_content.strip() if isinstance(raw_content, str) else ""
+
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
         file_info = last_message.get("File")
@@ -98,7 +102,6 @@ def webhook():
                 {"role": "user", "content": message_content}
             ]
 
-        # ✅ Novo modelo multimodal GPT-4o
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
