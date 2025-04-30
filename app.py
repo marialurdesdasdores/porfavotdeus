@@ -54,12 +54,11 @@ def webhook():
         data = request.json
         logging.info("Payload bruto recebido:\n" + json.dumps(data, indent=2, ensure_ascii=False))
 
-        # Extrair mensagem e telefone
-        last_message = data.get("Payload", {}).get("Content", {}).get("LastMessage", {})
-        contact_info = data.get("Payload", {}).get("Contact", {})
+        # Extração segura do conteúdo real da Umbler
+        content = data.get("Payload", {}).get("Content", {})
 
-        message_content = last_message.get("Content", "").strip()
-        phone_number = contact_info.get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
+        message_content = content.get("LastMessage", {}).get("Content", "").strip()
+        phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
         if not message_content or not phone_number:
             logging.error("Mensagem ou número do cliente ausente no payload.")
