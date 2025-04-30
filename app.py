@@ -17,7 +17,7 @@ UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Configuração da API OpenAI
+# Configuração da API OpenAI (0.28.1)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Inicializa Flask
@@ -67,48 +67,28 @@ def webhook():
 
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
-        file_info = last_message.get("File")
-        if not isinstance(file_info, dict):
-            message_block = content.get("Message")
-            file_info = message_block.get("File") if isinstance(message_block, dict) else {}
-
-        image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
-
         if source != "Contact":
             logging.warning("Mensagem ignorada (não é de um cliente).")
             return jsonify({"status": "ignorada"}), 200
 
-        if not phone_number or (not message_content and not image_url):
+        if not phone_number or not message_content:
             logging.error("Conteúdo ou número ausente.")
             return jsonify({"error": "Dados incompletos"}), 400
 
         system_prompt = carregar_prompt_personalizado()
 
-        if message_type == "Image" and image_url:
-            logging.info(f"🖼️ Cliente enviou uma imagem: {image_url}")
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "Descreva a imagem enviada."},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
-                }
-            ]
-        else:
-            logging.info(f"💬 Cliente enviou texto: {message_content}")
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": message_content}
-            ]
+        logging.info(f"💬 Cliente enviou texto: {message_content}")
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message_content}
+        ]
 
-        response = openai.chat.completions.create(
-            model="gpt-4o",
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
             messages=messages,
             max_tokens=400
         )
-        reply = response.choices[0].message.content.strip()
+        reply = response.choices[0].message["content"].strip()
 
         payload = {
             "ToPhone": phone_number,
