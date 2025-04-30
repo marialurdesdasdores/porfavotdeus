@@ -6,25 +6,25 @@ import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-import openai  # Correto para versão 1.14.3
+from openai import OpenAI  # Biblioteca moderna (v1+)
 
 # Carrega variáveis do .env
 load_dotenv()
 
-# Umbler config
+# Configurações Umbler
 UMBLER_ORG_ID = os.getenv("UMBLER_ORG_ID")
 UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Configura chave da OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Cliente OpenAI moderno
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")
 
-# Flask setup
+# Inicializa Flask
 app = Flask(__name__)
 CORS(app)
 
-# Log format
+# Logging configurado
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def carregar_prompt_personalizado():
@@ -103,12 +103,12 @@ def webhook():
                 {"role": "user", "content": message_content}
             ]
 
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
             max_tokens=400
         )
-        reply = response.choices[0].message["content"].strip()
+        reply = response.choices[0].message.content.strip()
 
         payload = {
             "ToPhone": phone_number,
