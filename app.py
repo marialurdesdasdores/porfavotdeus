@@ -11,13 +11,13 @@ from openai import OpenAI
 # Carrega variáveis do .env
 load_dotenv()
 
-# Umbler config
+# Configurações Umbler
 UMBLER_ORG_ID = os.getenv("UMBLER_ORG_ID")
 UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Cliente OpenAI
+# Inicializa cliente OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Flask setup
@@ -62,42 +62,43 @@ def webhook():
         last_message = content.get("LastMessage", {})
         source = last_message.get("Source", "")
 
-        # Identificação do tipo de mensagem (imagem ou texto)
+        # Detecta tipo de mensagem
         message_type = last_message.get("MessageType", "")
         if not message_type:
             message_type = content.get("Message", {}).get("MessageType", "")
 
-        # Conteúdo do texto
+        # Conteúdo textual
         raw_content = last_message.get("Content")
         message_content = raw_content.strip() if isinstance(raw_content, str) else ""
 
         # Número do cliente
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
-        # Extração da imagem (caso venha de outro ponto)
+        # Tenta pegar imagem de LastMessage ou Message
         file_info = last_message.get("File")
         if not isinstance(file_info, dict):
-            message_block = content.get("Message")
-            if isinstance(message_block, dict):
-                file_info = message_block.get("File")
-            else:
-                file_info = {}
+            file_info = content.get("Message", {}).get("File", {})
 
         image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
 
-        # Ignora mensagens que não sejam do cliente
+        # Ignora mensagens que não são do cliente
         if source != "Contact":
-            logging.warning("Mensagem ignorada (não é de um cliente).")
+            logging.warning("Mensagem ignorada (não é do cliente).")
             return jsonify({"status": "ignorada"}), 200
 
-        if not phone_number or (not message_content and not image_url):
-            logging.error("Conteúdo ou número ausente.")
-            return jsonify({"error": "Dados incompletos"}), 400
+        # Validações
+        if not phone_number:
+            logging.error("Número de telefone ausente.")
+            return jsonify({"error": "Número ausente"}), 400
+
+        if not message_content and not image_url:
+            logging.error("Nem texto nem imagem presentes.")
+            return jsonify({"error": "Conteúdo ausente"}), 400
 
         # Prompt personalizado
         system_prompt = carregar_prompt_personalizado()
 
-        # Construção da mensagem para GPT
+        # Monta mensagens para OpenAI
         if message_type == "Image" and image_url:
             logging.info(f"🖼️ Cliente enviou uma imagem: {image_url}")
             messages = [
