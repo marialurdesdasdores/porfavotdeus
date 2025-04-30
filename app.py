@@ -1,15 +1,3 @@
-# Estrutura do repositório para subir no Render
-
-# Arquivos:
-# - app.py
-# - .env (NÃO deve ser enviado para o Git)
-# - .gitignore
-# - prompt_ia.txt
-# - requirements.txt
-# - Procfile
-# - README.md
-
-# 1. app.py (código principal do Flask + integração com GPT-4o)
 import os
 import requests
 import logging
@@ -18,7 +6,7 @@ import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-from openai import OpenAI
+import openai  # Versão 1.14.3
 
 # Carrega variáveis do .env
 load_dotenv()
@@ -29,13 +17,14 @@ UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Cliente OpenAI (correto para openai>=1.14.3)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Configuração da OpenAI
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Flask setup
 app = Flask(__name__)
 CORS(app)
 
+# Log format
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def carregar_prompt_personalizado():
@@ -49,7 +38,12 @@ def carregar_prompt_personalizado():
 def send_message_with_retry(payload, headers, retries=3, delay=2):
     for attempt in range(retries):
         try:
-            response = requests.post(UMBLER_SEND_MESSAGE_URL, json=payload, headers=headers, timeout=10)
+            response = requests.post(
+                UMBLER_SEND_MESSAGE_URL,
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
             if response.status_code == 200:
                 return response
             logging.error(f"Tentativa {attempt + 1} falhou. Status: {response.status_code}. Resposta: {response.text}")
@@ -67,9 +61,11 @@ def webhook():
         content = data.get("Payload", {}).get("Content", {})
         last_message = content.get("LastMessage", {})
         source = last_message.get("Source", "")
+
         message_type = last_message.get("MessageType", "") or content.get("Message", {}).get("MessageType", "")
         raw_content = last_message.get("Content")
         message_content = raw_content.strip() if isinstance(raw_content, str) else ""
+
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
         file_info = last_message.get("File")
@@ -108,7 +104,7 @@ def webhook():
                 {"role": "user", "content": message_content}
             ]
 
-        response = client.chat.completions.create(
+        response = openai.chat.completions.create(
             model="gpt-4o",
             messages=messages,
             max_tokens=400
