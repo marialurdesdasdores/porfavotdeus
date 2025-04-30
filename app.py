@@ -17,7 +17,7 @@ UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Configuração da API OpenAI (0.28.1)
+# Configuração da API OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Inicializa Flask
@@ -27,30 +27,24 @@ CORS(app)
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-def carregar_prompt_personalizado():
+def carregar_prompt():
     try:
         with open("prompt_ia.txt", "r", encoding="utf-8") as f:
             return f.read()
-    except Exception as e:
-        logging.error(f"Erro ao carregar prompt: {e}")
-        return "Você é uma atendente virtual educada e prestativa."
+    except:
+        return "Você é uma atendente virtual de uma floricultura. Seja educada e útil."
 
-def send_message_with_retry(payload, headers, retries=3, delay=2):
-    for attempt in range(retries):
-        try:
-            response = requests.post(
-                UMBLER_SEND_MESSAGE_URL,
-                json=payload,
-                headers=headers,
-                timeout=10
-            )
-            if response.status_code == 200:
-                return response
-            logging.error(f"Tentativa {attempt + 1} falhou. Status: {response.status_code}. Resposta: {response.text}")
-        except Exception as e:
-            logging.error(f"Erro na tentativa {attempt + 1}: {str(e)}")
-        time.sleep(delay)
-    return None
+def carregar_catalogo():
+    try:
+        with open("catalogo_produtos.txt", "r", encoding="utf-8") as f:
+            return f.read()
+    except:
+        return ""
+
+def contem_palavra_chave(texto):
+    texto = texto.lower()
+    palavras = ["produto", "produtos", "opções", "flores", "cestas", "presentes", "catálogo", "arranjos", "tem o quê", "tem o que", "tem algo"]
+    return any(p in texto for p in palavras)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -75,7 +69,14 @@ def webhook():
             logging.error("Conteúdo ou número ausente.")
             return jsonify({"error": "Dados incompletos"}), 400
 
-        system_prompt = carregar_prompt_personalizado()
+        prompt_base = carregar_prompt()
+        catalogo = carregar_catalogo()
+
+        # Se detectar interesse por produtos, inclui catálogo
+        if contem_palavra_chave(message_content):
+            system_prompt = prompt_base + "\n\n📦 Catálogo de produtos:\n" + catalogo
+        else:
+            system_prompt = prompt_base
 
         logging.info(f"💬 Cliente enviou texto: {message_content}")
         messages = [
@@ -101,12 +102,7 @@ def webhook():
             "Content-Type": "application/json"
         }
 
-        umbler_response = send_message_with_retry(payload, headers)
-
-        if not umbler_response or umbler_response.status_code != 200:
-            logging.error(f"Erro ao enviar resposta. Status: {umbler_response.status_code if umbler_response else 'N/A'}")
-            return jsonify({"error": "Falha ao enviar mensagem"}), 500
-
+        r = requests.post(UMBLER_SEND_MESSAGE_URL, json=payload, headers=headers)
         logging.info(f"✅ Resposta enviada para {phone_number}: {reply[:60]}...")
         return jsonify({"status": "success"}), 200
 
