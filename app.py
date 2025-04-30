@@ -1,38 +1,26 @@
 import os
 import logging
-import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
 from dotenv import load_dotenv
+from openai import OpenAI
+import requests
 
-# Carregar variáveis de ambiente do .env
+# Carrega variáveis de ambiente do .env
 load_dotenv()
 
-# Inicializar cliente OpenAI (sem 'proxies')
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
+# Configura logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-# Configuração da Umbler
-UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
-UMBLER_ORG_ID = os.getenv("UMBLER_ORG_ID")
-FROM_PHONE = os.getenv("FROM_PHONE")
-UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
+# Inicializa o cliente da OpenAI sem proxies
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Setup Flask
+# Flask setup
 app = Flask(__name__)
 CORS(app)
-
-# Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-# Carregar prompt customizado
-with open("promt IA.txt", "r", encoding="utf-8") as f:
-    SYSTEM_PROMPT = f.read().strip()
-
-# Controle para evitar loop de respostas
-ultima_resposta_por_contato = {}
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -40,81 +28,64 @@ def webhook():
         data = request.get_json()
         logging.info("Payload bruto recebido:\n%s", data)
 
-        content = data.get("Payload", {}).get("Content")
-        contact = content.get("Contact") if content else None
-        last_message = content.get("LastMessage") if content else None
+        payload = data.get("Payload", {})
+        content = payload.get("Content", {})
+        contact = payload.get("Contact", {})
+        phone_number = contact.get("PhoneNumber", "")
 
-        # Verifica se é imagem ou texto
+        last_message = content.get("LastMessage") or content.get("Message")
+        message_type = last_message.get("MessageType") if last_message else None
         message_content = last_message.get("Content") if last_message else None
         file_info = last_message.get("File") if last_message else None
-        phone_number = contact.get("PhoneNumber") if contact else None
 
         if not phone_number:
-            logging.error("Conteúdo ou número ausente.")
-            return ("Conteúdo ou número ausente.", 400)
+            logging.error("Telefone ausente no payload.")
+            return jsonify({"error": "Telefone ausente."}), 400
 
-        # Verifica se é uma imagem com URL
-        if file_info and file_info.get("Url"):
+        if message_type == "Image" and file_info:
             image_url = file_info.get("Url")
-            logging.info("🖼️ Cliente enviou imagem: %s", image_url)
+            if not image_url:
+                logging.error("URL da imagem ausente.")
+                return jsonify({"error": "URL da imagem ausente."}), 400
+
+            logging.info("📷 Cliente enviou imagem: %s", image_url)
 
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Descreva o que você vê nesta imagem."},
-                            {"type": "image_url", "image_url": {"url": image_url}}
-                        ]
-                    }
-                ]
+                    {"role": "system", "content": "Você é uma assistente virtual e deve analisar imagens enviadas pelos clientes e responder com base nelas."},
+                    {"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    ]},
+                ],
+                max_tokens=500
             )
-            reply = response.choices[0].message.content
 
-        elif message_content:
-            logging.info("💬 Cliente enviou texto: %s", message_content)
+            resposta = response.choices[0].message.content.strip()
 
-            # Anti-loop: se for igual à última resposta, não responde
-            if ultima_resposta_por_contato.get(phone_number) == message_content.strip():
-                logging.warning("⚠️ Detecção de loop. Ignorando mensagem.")
-                return ("Loop detectado.", 200)
+        elif message_type == "Text" and message_content:
+            logging.info("🗣️ Cliente enviou texto: %s", message_content)
 
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": message_content.strip()}
-                ]
+                    {"role": "system", "content": os.getenv("IA_PROMPT", "Você é uma assistente virtual."),},
+                    {"role": "user", "content": message_content.strip()},
+                ],
+                max_tokens=500
             )
-            reply = response.choices[0].message.content
-            ultima_resposta_por_contato[phone_number] = reply.strip()
 
+            resposta = response.choices[0].message.content.strip()
         else:
-            logging.error("❌ Nenhuma mensagem processável encontrada.")
-            return ("Nada para processar.", 400)
+            logging.error("Conteúdo ou tipo de mensagem inválido.")
+            return jsonify({"error": "Conteúdo ou tipo de mensagem inválido."}), 400
 
-        # Enviar resposta via Umbler
-        response_data = {
-            "To": phone_number,
-            "From": FROM_PHONE,
-            "Text": reply.strip()
-        }
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "x-api-key": UMBLER_API_KEY,
-            "x-org-id": UMBLER_ORG_ID
-        }
-        res = requests.post(UMBLER_SEND_MESSAGE_URL, json=response_data, headers=headers)
-        logging.info("Resposta enviada para %s: %s", phone_number, reply)
-
-        return jsonify({"status": "success"}), 200
+        logging.info("📢 Resposta enviada para %s: %s", phone_number, resposta[:100])
+        return jsonify({"status": "success"})
 
     except Exception as e:
-        logging.exception("Erro crítico:")
+        logging.error("Erro crítico:", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, host="0.0.0.0")
+    app.run(debug=True, host="0.0.0.0")
