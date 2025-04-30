@@ -6,7 +6,7 @@ import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-import openai
+from openai import OpenAI
 
 # Carrega variáveis do .env
 load_dotenv()
@@ -17,8 +17,8 @@ UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Configura chave da OpenAI
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Cliente OpenAI moderno
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Flask setup
 app = Flask(__name__)
@@ -61,7 +61,6 @@ def webhook():
         content = data.get("Payload", {}).get("Content", {})
         last_message = content.get("LastMessage", {})
         source = last_message.get("Source", "")
-
         message_type = last_message.get("MessageType", "") or content.get("Message", {}).get("MessageType", "")
         raw_content = last_message.get("Content")
         message_content = raw_content.strip() if isinstance(raw_content, str) else ""
@@ -104,12 +103,12 @@ def webhook():
                 {"role": "user", "content": message_content}
             ]
 
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
             max_tokens=400
         )
-        reply = response.choices[0].message["content"].strip()
+        reply = response.choices[0].message.content.strip()
 
         payload = {
             "ToPhone": phone_number,
