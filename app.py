@@ -8,23 +8,23 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from openai import OpenAI
 
-# Carregar variáveis de ambiente
+# Carrega variáveis do .env
 load_dotenv()
 
-# Configurações da API Umbler
+# Umbler config
 UMBLER_ORG_ID = os.getenv("UMBLER_ORG_ID")
 UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Inicializar cliente OpenAI
+# Cliente OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Inicializar Flask
+# Flask setup
 app = Flask(__name__)
 CORS(app)
 
-# Logging no console
+# Log format
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 def carregar_prompt_personalizado():
@@ -61,15 +61,20 @@ def webhook():
         content = data.get("Payload", {}).get("Content", {})
         last_message = content.get("LastMessage", {})
         source = last_message.get("Source", "")
-        message_type = last_message.get("MessageType", "")
 
-        # Protege contra erro de strip em None
+        # Identificação do tipo de mensagem (imagem ou texto)
+        message_type = last_message.get("MessageType", "")
+        if not message_type:
+            message_type = content.get("Message", {}).get("MessageType", "")
+
+        # Conteúdo do texto
         raw_content = last_message.get("Content")
         message_content = raw_content.strip() if isinstance(raw_content, str) else ""
 
+        # Número do cliente
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
-        # ✅ Corrigido: acessa Message.File só se Message for dict
+        # Extração da imagem (caso venha de outro ponto)
         file_info = last_message.get("File")
         if not isinstance(file_info, dict):
             message_block = content.get("Message")
@@ -80,6 +85,7 @@ def webhook():
 
         image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
 
+        # Ignora mensagens que não sejam do cliente
         if source != "Contact":
             logging.warning("Mensagem ignorada (não é de um cliente).")
             return jsonify({"status": "ignorada"}), 200
@@ -88,9 +94,10 @@ def webhook():
             logging.error("Conteúdo ou número ausente.")
             return jsonify({"error": "Dados incompletos"}), 400
 
+        # Prompt personalizado
         system_prompt = carregar_prompt_personalizado()
 
-        # Processamento da imagem
+        # Construção da mensagem para GPT
         if message_type == "Image" and image_url:
             logging.info(f"🖼️ Cliente enviou uma imagem: {image_url}")
             messages = [
