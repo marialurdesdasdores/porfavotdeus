@@ -18,7 +18,7 @@ FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
 # Cliente OpenAI moderno
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Inicializa Flask
 app = Flask(__name__)
