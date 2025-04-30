@@ -1,91 +1,152 @@
 import os
+import requests
 import logging
+import json
+import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 from openai import OpenAI
-import requests
 
-# Carrega variáveis de ambiente do .env
+# Carrega variáveis do .env
 load_dotenv()
 
-# Configura logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# Umbler config
+UMBLER_ORG_ID = os.getenv("UMBLER_ORG_ID")
+UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
+FROM_PHONE = os.getenv("FROM_PHONE")
+UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Inicializa o cliente da OpenAI sem proxies
+# Cliente OpenAI
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Flask setup
 app = Flask(__name__)
 CORS(app)
 
+# Log format
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+def carregar_prompt_personalizado():
+    try:
+        with open("prompt_ia.txt", "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        logging.error(f"Erro ao carregar prompt: {e}")
+        return "Você é uma atendente virtual educada e prestativa."
+
+def send_message_with_retry(payload, headers, retries=3, delay=2):
+    for attempt in range(retries):
+        try:
+            response = requests.post(
+                UMBLER_SEND_MESSAGE_URL,
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+            if response.status_code == 200:
+                return response
+            logging.error(f"Tentativa {attempt + 1} falhou. Status: {response.status_code}. Resposta: {response.text}")
+        except Exception as e:
+            logging.error(f"Erro na tentativa {attempt + 1}: {str(e)}")
+        time.sleep(delay)
+    return None
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
-        data = request.get_json()
-        logging.info("Payload bruto recebido:\n%s", data)
+        data = request.json
+        logging.info("Payload bruto recebido:\n" + json.dumps(data, indent=2, ensure_ascii=False))
 
-        payload = data.get("Payload", {})
-        content = payload.get("Content", {})
-        contact = payload.get("Contact", {})
-        phone_number = contact.get("PhoneNumber", "")
+        content = data.get("Payload", {}).get("Content", {})
+        last_message = content.get("LastMessage", {})
+        source = last_message.get("Source", "")
 
-        last_message = content.get("LastMessage") or content.get("Message")
-        message_type = last_message.get("MessageType") if last_message else None
-        message_content = last_message.get("Content") if last_message else None
-        file_info = last_message.get("File") if last_message else None
+        # Identificação do tipo de mensagem (imagem ou texto)
+        message_type = last_message.get("MessageType", "")
+        if not message_type:
+            message_type = content.get("Message", {}).get("MessageType", "")
 
-        if not phone_number:
-            logging.error("Telefone ausente no payload.")
-            return jsonify({"error": "Telefone ausente."}), 400
+        # Conteúdo do texto
+        raw_content = last_message.get("Content")
+        message_content = raw_content.strip() if isinstance(raw_content, str) else ""
 
-        if message_type == "Image" and file_info:
-            image_url = file_info.get("Url")
-            if not image_url:
-                logging.error("URL da imagem ausente.")
-                return jsonify({"error": "URL da imagem ausente."}), 400
+        # Número do cliente
+        phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
-            logging.info("📷 Cliente enviou imagem: %s", image_url)
+        # Extração da imagem (caso venha de outro ponto)
+        file_info = last_message.get("File")
+        if not isinstance(file_info, dict):
+            message_block = content.get("Message")
+            if isinstance(message_block, dict):
+                file_info = message_block.get("File")
+            else:
+                file_info = {}
 
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "Você é uma assistente virtual e deve analisar imagens enviadas pelos clientes e responder com base nelas."},
-                    {"role": "user", "content": [
+        image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
+
+        # Ignora mensagens que não sejam do cliente
+        if source != "Contact":
+            logging.warning("Mensagem ignorada (não é de um cliente).")
+            return jsonify({"status": "ignorada"}), 200
+
+        if not phone_number or (not message_content and not image_url):
+            logging.error("Conteúdo ou número ausente.")
+            return jsonify({"error": "Dados incompletos"}), 400
+
+        # Prompt personalizado
+        system_prompt = carregar_prompt_personalizado()
+
+        # Construção da mensagem para GPT
+        if message_type == "Image" and image_url:
+            logging.info(f"🖼️ Cliente enviou uma imagem: {image_url}")
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Descreva a imagem enviada."},
                         {"type": "image_url", "image_url": {"url": image_url}}
-                    ]},
-                ],
-                max_tokens=500
-            )
-
-            resposta = response.choices[0].message.content.strip()
-
-        elif message_type == "Text" and message_content:
-            logging.info("🗣️ Cliente enviou texto: %s", message_content)
-
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": os.getenv("IA_PROMPT", "Você é uma assistente virtual."),},
-                    {"role": "user", "content": message_content.strip()},
-                ],
-                max_tokens=500
-            )
-
-            resposta = response.choices[0].message.content.strip()
+                    ]
+                }
+            ]
         else:
-            logging.error("Conteúdo ou tipo de mensagem inválido.")
-            return jsonify({"error": "Conteúdo ou tipo de mensagem inválido."}), 400
+            logging.info(f"💬 Cliente enviou texto: {message_content}")
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message_content}
+            ]
 
-        logging.info("📢 Resposta enviada para %s: %s", phone_number, resposta[:100])
-        return jsonify({"status": "success"})
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=400
+        )
+        reply = response.choices[0].message.content.strip()
+
+        payload = {
+            "ToPhone": phone_number,
+            "FromPhone": FROM_PHONE,
+            "OrganizationId": UMBLER_ORG_ID,
+            "Message": reply
+        }
+        headers = {
+            "Authorization": f"Bearer {UMBLER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        umbler_response = send_message_with_retry(payload, headers)
+
+        if not umbler_response or umbler_response.status_code != 200:
+            logging.error(f"Erro ao enviar resposta. Status: {umbler_response.status_code if umbler_response else 'N/A'}")
+            return jsonify({"error": "Falha ao enviar mensagem"}), 500
+
+        logging.info(f"✅ Resposta enviada para {phone_number}: {reply[:60]}...")
+        return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logging.error("Erro crítico:", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        logging.exception("Erro crítico:")
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+    app.run(host="0.0.0.0", port=5000, debug=True)
