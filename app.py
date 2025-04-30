@@ -69,10 +69,15 @@ def webhook():
 
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
-        # ✅ Correção: tenta pegar imagem de LastMessage ou Message
+        # ✅ Corrigido: acessa Message.File só se Message for dict
         file_info = last_message.get("File")
         if not isinstance(file_info, dict):
-            file_info = content.get("Message", {}).get("File")
+            message_block = content.get("Message")
+            if isinstance(message_block, dict):
+                file_info = message_block.get("File")
+            else:
+                file_info = {}
+
         image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
 
         if source != "Contact":
