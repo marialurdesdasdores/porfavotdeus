@@ -2,16 +2,16 @@ import os
 import openai
 import requests
 import logging
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-from datetime import datetime
 import time
 
 # Carregar variáveis de ambiente
 load_dotenv()
 
-# Configurações da API
+# Configurações da API Umbler
 UMBLER_ORG_ID = os.getenv("UMBLER_ORG_ID")
 UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
@@ -25,53 +25,61 @@ app = Flask(__name__)
 CORS(app)
 
 # Configurar logging
-logging.basicConfig(filename="webhook_log.log", level=logging.INFO, format="%(asctime)s %(levelname)s:%(message)s")
+logging.basicConfig(
+    filename="webhook.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-# Função auxiliar para enviar mensagem com retry
 def send_message_with_retry(payload, headers, retries=3, delay=2):
+    """Tenta enviar mensagem até 3 vezes em caso de falha."""
     for attempt in range(retries):
-        response = requests.post(UMBLER_SEND_MESSAGE_URL, json=payload, headers=headers)
-        if response.status_code == 200:
-            return response
-        logging.warning(f"Tentativa {attempt + 1} falhou: {response.text}")
+        try:
+            response = requests.post(
+                UMBLER_SEND_MESSAGE_URL,
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+            if response.status_code == 200:
+                return response
+            logging.error(f"Tentativa {attempt + 1} falhou. Status: {response.status_code}. Resposta: {response.text}")
+        except Exception as e:
+            logging.error(f"Erro na tentativa {attempt + 1}: {str(e)}")
         time.sleep(delay)
-    return response
+    return None
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
         data = request.json
-        logging.info(f"JSON recebido: {data}")
+        logging.info("Payload bruto recebido:\n" + json.dumps(data, indent=2, ensure_ascii=False))
 
-        # Tenta extrair os dados com segurança
+        # Extrai mensagem e número
         last_message = data.get("Payload", {}).get("Content", {}).get("LastMessage", {})
         contact_info = data.get("Payload", {}).get("Contact", {})
 
-        message_content = last_message.get("Content", "")
-        phone_number = contact_info.get("PhoneNumber", "")
-
-        logging.info(f"Mensagem recebida: {message_content}")
-        logging.info(f"Número do cliente: {phone_number}")
+        message_content = last_message.get("Content", "").strip()
+        phone_number = contact_info.get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
         if not message_content or not phone_number:
-            logging.error("Mensagem ou número de telefone não encontrados!")
-            return jsonify({"error": "Mensagem ou número de telefone não encontrados!"}), 400
+            logging.error("Mensagem ou número do cliente ausente no payload.")
+            return jsonify({"error": "Dados incompletos no webhook."}), 400
 
-        # Histórico de mensagens (simples)
+        # Cria conversa com GPT
         conversation = [
-            {"role": "system", "content": "Você é um assistente inteligente."},
+            {"role": "system", "content": "Você é um atendente virtual simpático, prestativo e responde em português."},
             {"role": "user", "content": message_content}
         ]
 
-        # Resposta do ChatGPT
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=conversation,
-            max_tokens=150
+            max_tokens=200
         )
-        chat_gpt_reply = response.choices[0].message["content"]
+        chat_gpt_reply = response.choices[0].message["content"].strip()
 
-        # Enviar a resposta para o Umbler
+        # Prepara envio para Umbler
         payload = {
             "ToPhone": phone_number,
             "FromPhone": FROM_PHONE,
@@ -85,16 +93,19 @@ def webhook():
         }
 
         umbler_response = send_message_with_retry(payload, headers)
-        logging.info(f"Resposta enviada ao Umbler (status {umbler_response.status_code}): {umbler_response.text}")
 
-        if umbler_response.status_code != 200:
-            return jsonify({"error": "Erro ao enviar mensagem para o Umbler."}), 500
+        if not umbler_response or umbler_response.status_code != 200:
+            logging.error(f"Falha ao enviar mensagem. Status: {umbler_response.status_code if umbler_response else 'N/A'}")
+            logging.error(f"Headers: {umbler_response.headers if umbler_response else 'N/A'}")
+            logging.error(f"Resposta: {umbler_response.text if umbler_response else 'N/A'}")
+            return jsonify({"error": "Falha ao enviar mensagem para o Umbler."}), 500
 
-        return jsonify({"message": "Mensagem enviada com sucesso!"}), 200
+        logging.info(f"Resposta enviada para {phone_number}: {chat_gpt_reply[:60]}...")
+        return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logging.exception("Erro no webhook")
-        return jsonify({"error": f"Erro: {str(e)}"}), 500
+        logging.exception("Erro crítico no webhook:")
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
