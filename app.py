@@ -24,9 +24,8 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 app = Flask(__name__)
 CORS(app)
 
-# Configurar logging
+# Logging para stdout (Render)
 logging.basicConfig(
-    filename="webhook.log",
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -66,7 +65,7 @@ def webhook():
             logging.error("Mensagem ou número do cliente ausente no payload.")
             return jsonify({"error": "Dados incompletos no webhook."}), 400
 
-        # Criar conversa com o ChatGPT
+        # Criar conversa com ChatGPT
         conversation = [
             {"role": "system", "content": "Você é um atendente virtual simpático, prestativo e responde em português."},
             {"role": "user", "content": message_content}
@@ -79,7 +78,7 @@ def webhook():
         )
         chat_gpt_reply = response.choices[0].message.content.strip()
 
-        # Enviar mensagem de volta para o cliente via Umbler
+        # Enviar resposta para o cliente via Umbler
         payload = {
             "ToPhone": phone_number,
             "FromPhone": FROM_PHONE,
