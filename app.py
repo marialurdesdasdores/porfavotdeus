@@ -17,7 +17,7 @@ UMBLER_API_KEY = os.getenv("UMBLER_API_KEY")
 FROM_PHONE = os.getenv("FROM_PHONE")
 UMBLER_SEND_MESSAGE_URL = "https://app-utalk.umbler.com/api/v1/messages/simplified/"
 
-# Cliente OpenAI
+# Cliente OpenAI (sem proxies)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Flask setup
@@ -62,30 +62,19 @@ def webhook():
         last_message = content.get("LastMessage", {})
         source = last_message.get("Source", "")
 
-        # Identificação do tipo de mensagem (imagem ou texto)
-        message_type = last_message.get("MessageType", "")
-        if not message_type:
-            message_type = content.get("Message", {}).get("MessageType", "")
-
-        # Conteúdo do texto
+        message_type = last_message.get("MessageType", "") or content.get("Message", {}).get("MessageType", "")
         raw_content = last_message.get("Content")
         message_content = raw_content.strip() if isinstance(raw_content, str) else ""
 
-        # Número do cliente
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
 
-        # Extração da imagem (caso venha de outro ponto)
         file_info = last_message.get("File")
         if not isinstance(file_info, dict):
             message_block = content.get("Message")
-            if isinstance(message_block, dict):
-                file_info = message_block.get("File")
-            else:
-                file_info = {}
+            file_info = message_block.get("File") if isinstance(message_block, dict) else {}
 
         image_url = file_info.get("Url", "") if isinstance(file_info, dict) else ""
 
-        # Ignora mensagens que não sejam do cliente
         if source != "Contact":
             logging.warning("Mensagem ignorada (não é de um cliente).")
             return jsonify({"status": "ignorada"}), 200
@@ -94,10 +83,8 @@ def webhook():
             logging.error("Conteúdo ou número ausente.")
             return jsonify({"error": "Dados incompletos"}), 400
 
-        # Prompt personalizado
         system_prompt = carregar_prompt_personalizado()
 
-        # Construção da mensagem para GPT
         if message_type == "Image" and image_url:
             logging.info(f"🖼️ Cliente enviou uma imagem: {image_url}")
             messages = [
