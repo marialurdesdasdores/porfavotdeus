@@ -56,9 +56,16 @@ def webhook():
 
         # Extração segura do conteúdo real da Umbler
         content = data.get("Payload", {}).get("Content", {})
+        last_message = content.get("LastMessage", {})
 
-        message_content = content.get("LastMessage", {}).get("Content", "").strip()
+        message_content = last_message.get("Content", "").strip()
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
+        source = last_message.get("Source", "")
+
+        # ⚠️ Anti-loop: só responde se for um humano (source == "Contact")
+        if source != "Contact":
+            logging.warning("Mensagem ignorada (não é de um usuário real).")
+            return jsonify({"status": "ignorada"}), 200
 
         if not message_content or not phone_number:
             logging.error("Mensagem ou número do cliente ausente no payload.")
