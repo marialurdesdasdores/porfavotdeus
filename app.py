@@ -2,7 +2,6 @@ import os
 import requests
 import logging
 import json
-import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -60,37 +59,54 @@ def webhook():
         message_content = raw_content.strip() if isinstance(raw_content, str) else ""
 
         phone_number = content.get("Contact", {}).get("PhoneNumber", "").replace(" ", "").replace("-", "").strip()
+        attachment_url = last_message.get("Attachment", {}).get("Url", "")
+        tem_imagem = bool(attachment_url)
 
         if source != "Contact":
             logging.warning("Mensagem ignorada (não é de um cliente).")
             return jsonify({"status": "ignorada"}), 200
 
-        if not phone_number or not message_content:
+        if not phone_number or (not message_content and not tem_imagem):
             logging.error("Conteúdo ou número ausente.")
             return jsonify({"error": "Dados incompletos"}), 400
 
         prompt_base = carregar_prompt()
         catalogo = carregar_catalogo()
 
-        # Se detectar interesse por produtos, inclui catálogo
         if contem_palavra_chave(message_content):
             system_prompt = prompt_base + "\n\n📦 Catálogo de produtos:\n" + catalogo
         else:
             system_prompt = prompt_base
 
-        logging.info(f"💬 Cliente enviou texto: {message_content}")
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message_content}
-        ]
+        # Criação das mensagens com ou sem imagem
+        if tem_imagem:
+            logging.info(f"🖼️ Cliente enviou uma imagem: {attachment_url}")
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": message_content or "Descreva a imagem."},
+                        {"type": "image_url", "image_url": {"url": attachment_url}}
+                    ]
+                }
+            ]
+        else:
+            logging.info(f"💬 Cliente enviou texto: {message_content}")
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message_content}
+            ]
 
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        # Chamada para a OpenAI
+        response = openai.chat.completions.create(
+            model="gpt-4o",
             messages=messages,
             max_tokens=400
         )
         reply = response.choices[0].message["content"].strip()
 
+        # Enviar resposta para o WhatsApp via Umbler
         payload = {
             "ToPhone": phone_number,
             "FromPhone": FROM_PHONE,
@@ -104,6 +120,7 @@ def webhook():
 
         r = requests.post(UMBLER_SEND_MESSAGE_URL, json=payload, headers=headers)
         logging.info(f"✅ Resposta enviada para {phone_number}: {reply[:60]}...")
+
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
